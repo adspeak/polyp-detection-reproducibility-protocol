@@ -1,0 +1,9 @@
+# Core dependencies for reproducing the evaluation protocol case study.
+# Pin versions if you need exact reproduction; the ranges below reflect the
+# environment used in the paper (Google Colab, Tesla T4, Python 3.10+).
+ultralytics>=8.0.0
+numpy>=1.23
+scipy>=1.9
+Pillow>=9.0
+PyYAML>=6.0
+matplotlib>=3.6
