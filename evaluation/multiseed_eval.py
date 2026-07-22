@@ -1,8 +1,8 @@
 """
 Multi-seed, size-stratified recall evaluation (Sections 3.1, 5.2).
 
-This is the core evaluation of the protocol's case study. For each of the three
-training seeds (42, 43, 44), it evaluates a baseline and a +P2 checkpoint on the
+This is the core evaluation of the protocol's case study. For each of the eight
+training seeds (42-49), it evaluates a baseline and a +P2 checkpoint on the
 fixed test set, computes recall in the small / medium / large strata, then
 aggregates across seeds (mean +/- std) and applies the operational assessment
 rule to the small stratum via a paired t-test on the per-seed differences.
@@ -10,12 +10,14 @@ rule to the small stratum via a paired t-test on the per-seed differences.
 Reproduces (on the paper's checkpoints):
     Table 3  - small-lesion recall per seed and mean +/- SD
     Table 4  - recall by lesion size across seeds
-    the reported small-stratum result: +2.4 +/- 2.8 pp, paired t-test p = 0.30
+    the reported small-stratum result: mean difference +0.82 pp,
+             pooled seed-to-seed SD 3.33 pp, paired t-test p = 0.41,
+             Cohen's d 0.25 -> the operational assessment rule is not satisfied
 
 Terminology note (kept precise, per the paper): the across-seed difference
 C_bar_k - B_bar_k is the "mean difference" (Delta_k), the PRIMARY quantity.
 Cohen's d (the standardized effect size) is reported only descriptively and is
-highly uncertain with three seeds; it is not the basis for the reliability call.
+not the basis for the reliability call.
 
 Recall matching: a ground-truth box counts as detected if some prediction
 (at confidence >= conf) has IoU >= iou_match with it. Each GT box is assigned to
@@ -27,9 +29,9 @@ Usage:
         --dataset ./ldpolyp \
         --thresholds size_thresholds.npy \
         --weights-dir ./weights \
-        --baseline best_baseline_1280_v2.pt best_baseline_1280_s43.pt best_baseline_1280_s44.pt \
-        --candidate best_P2_1280_v2.pt best_P2_1280_s43.pt best_P2_1280_s44.pt \
-        --seeds 42 43 44 \
+        --baseline  baseline_seed42.pt ... baseline_seed49.pt \
+        --candidate p2_seed42.pt       ... p2_seed49.pt \
+        --seeds 42 43 44 45 46 47 48 49 \
         --imgsz 1280 --conf 0.25 --iou-match 0.5 \
         --out multiseed_results.json
 """
@@ -95,11 +97,12 @@ def eval_size(weight, dataset, p33, p67, imgsz, conf=0.25, iou_match=0.5):
     return {k: (hit[k] / tot[k] if tot[k] > 0 else 0.0) for k in tot}
 
 
-def cohens_d_paired(diffs):
-    """Descriptive standardized effect size for paired differences."""
-    diffs = np.asarray(diffs, dtype=float)
-    sd = diffs.std(ddof=1)
-    return float(diffs.mean() / sd) if sd > 0 else float("nan")
+def cohens_d(bs, ps):
+    """Descriptive standardized effect size, pooled-SD denominator (Section 3.1)."""
+    bs = np.asarray(bs, dtype=float)
+    ps = np.asarray(ps, dtype=float)
+    sd = np.sqrt((bs.std(ddof=1) ** 2 + ps.std(ddof=1) ** 2) / 2.0)
+    return float((ps.mean() - bs.mean()) / sd) if sd > 0 else float("nan")
 
 
 def main():
@@ -111,7 +114,8 @@ def main():
                     help="Baseline checkpoint filenames, one per seed (in seed order).")
     ap.add_argument("--candidate", nargs="+", required=True,
                     help="+P2 checkpoint filenames, one per seed (in seed order).")
-    ap.add_argument("--seeds", nargs="+", default=["42", "43", "44"])
+    ap.add_argument("--seeds", nargs="+",
+                    default=["42", "43", "44", "45", "46", "47", "48", "49"])
     ap.add_argument("--imgsz", type=int, default=1280)
     ap.add_argument("--conf", type=float, default=0.25)
     ap.add_argument("--iou-match", type=float, default=0.5)
@@ -152,11 +156,12 @@ def main():
     # operational assessment rule on the small stratum
     bs = np.array(data["baseline"]["small"]) * 100
     ps = np.array(data["candidate"]["small"]) * 100
-    diffs = ps - bs
     delta = float(ps.mean() - bs.mean())         # mean difference (primary)
     t, pval = stats.ttest_rel(ps, bs)            # paired t-test (supplementary)
-    d = cohens_d_paired(diffs)                   # standardized effect (descriptive)
-    sd_seed = float(np.std(np.concatenate([bs, ps]), ddof=1))  # pooled seed-to-seed SD
+    d = cohens_d(bs, ps)                         # standardized effect (descriptive)
+    # Pooled seed-to-seed SD, as defined in Section 3.1: the pooled standard
+    # deviation of B_k and C_k across seeds, i.e. sqrt((SD_B^2 + SD_C^2) / 2).
+    sd_seed = float(np.sqrt((bs.std(ddof=1) ** 2 + ps.std(ddof=1) ** 2) / 2.0))
 
     print("\n" + "=" * 64)
     print("Operational assessment rule (small stratum):")
