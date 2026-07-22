@@ -1,94 +1,94 @@
 {
-  "记录时间": "2026-07-18 03:00:33",
-  "说明": "LDPolypVideo数据集重建 + 一致性验证（原zip丢失后重建）",
-  "数据源": {
-    "BASE": "/content/drive/MyDrive/small",
-    "TrainValid视频数": 100,
-    "Test视频数": 60
+  "record_time": "2026-07-18 03:00:33",
+  "description": "LDPolypVideo dataset rebuild and consistency verification (rebuilt after the original archive was lost)",
+  "data_source": {
+    "base_path": "/content/drive/MyDrive/small",
+    "trainvalid_videos": 100,
+    "test_videos": 60
   },
-  "预处理参数（必须严格复现）": {
+  "preprocessing_parameters_must_be_reproduced_exactly": {
     "STRIDE": 10,
     "VAL_RATIO": 0.15,
     "random_seed": 42,
-    "切分方式": "视频级(video-level)，random.shuffle(tv_videos)后前15%作val",
-    "抽帧": "sorted(glob(*.jpg))[::10]，从第0帧开始",
-    "标注转换": "sorted排序x1x2/y1y2 → 裁剪到[0,W]/[0,H] → 过滤bw<1或bh<1 → 归一化YOLO格式",
-    "命名规则": "{视频名}_{帧stem}"
+    "split_method": "video-level; random.shuffle(tv_videos), then the first 15% are used as val",
+    "frame_sampling": "sorted(glob(*.jpg))[::10], starting from frame 0",
+    "annotation_conversion": "sort x1/x2 and y1/y2 -> clip to [0,W] and [0,H] -> drop boxes with bw<1 or bh<1 -> normalise to YOLO format",
+    "naming_convention": "{video_name}_{frame_stem}"
   },
-  "重建结果（与论文完全一致）": {
+  "rebuild_result_identical_to_the_paper": {
     "train": {
-      "图": 2118,
-      "有息肉": 1774,
-      "无息肉": 344,
-      "框": 1877,
-      "丢弃退化框": 0
+      "images": 2118,
+      "with_polyp": 1774,
+      "without_polyp": 344,
+      "boxes": 1877,
+      "degenerate_boxes_dropped": 0
     },
     "val": {
-      "图": 402,
-      "有息肉": 329,
-      "无息肉": 73,
-      "框": 370,
-      "丢弃退化框": 0
+      "images": 402,
+      "with_polyp": 329,
+      "without_polyp": 73,
+      "boxes": 370,
+      "degenerate_boxes_dropped": 0
     },
     "test": {
-      "图": 1570,
-      "有息肉": 1298,
-      "无息肉": 272,
-      "框": 1538,
-      "丢弃退化框": 0
+      "images": 1570,
+      "with_polyp": 1298,
+      "without_polyp": 272,
+      "boxes": 1538,
+      "degenerate_boxes_dropped": 0
     },
-    "视频划分": {
+    "video_split": {
       "train": 85,
       "val": 15,
       "test": 60
     }
   },
-  "一致性验证（用seed42现有权重复现论文数字）": {
-    "阈值": {
+  "consistency_check_reproducing_the_paper_values_with_the_existing_seed42_checkpoints": {
+    "thresholds": {
       "P33": 0.0187,
       "P67": 0.0631
     },
-    "评估设置": {
+    "evaluation_settings": {
       "imgsz": 1280,
       "conf": 0.25,
       "iou_match": 0.5
     },
-    "结果": {
-      "baseline小息肉": {
-        "重建": "27.2%",
-        "论文": "27.2%",
-        "状态": "✅"
+    "results": {
+      "baseline_small_lesion_recall": {
+        "rebuilt": "27.2%",
+        "paper": "27.2%",
+        "status": "match"
       },
-      "P2小息肉": {
-        "重建": "32.8%",
-        "论文": "32.8%",
-        "状态": "✅"
+      "p2_small_lesion_recall": {
+        "rebuilt": "32.8%",
+        "paper": "32.8%",
+        "status": "match"
       },
-      "baseline中息肉": {
-        "重建": "48.0%",
-        "论文": "48.0%",
-        "状态": "✅"
+      "baseline_medium_lesion_recall": {
+        "rebuilt": "48.0%",
+        "paper": "48.0%",
+        "status": "match"
       },
-      "baseline大息肉": {
-        "重建": "57.8%",
-        "论文": "57.8%",
-        "状态": "✅"
+      "baseline_large_lesion_recall": {
+        "rebuilt": "57.8%",
+        "paper": "57.8%",
+        "status": "match"
       },
-      "GT总数": {
-        "重建": 1538,
-        "论文": 1538,
-        "状态": "✅"
+      "total_ground_truth_boxes": {
+        "rebuilt": 1538,
+        "paper": 1538,
+        "status": "match"
       }
     },
-    "测试集分档GT数": {
-      "小": 762,
-      "中": 475,
-      "大": 301
+    "test_set_ground_truth_by_stratum": {
+      "small": 762,
+      "medium": 475,
+      "large": 301
     },
-    "结论": "五项全部一致，重建数据与原始训练数据100%相同，新种子可与旧种子(42/43/44)合并统计"
+    "conclusion": "All five checks agree. The rebuilt data is identical to the original training data, so the new seeds can be pooled with the earlier seeds (42, 43, 44) in the across-seed statistics."
   },
-  "历史遗留说明": {
-    "summary_final.txt": "早期640/1280探索的历史记录（小息肉GT=762对应本次验证的测试集小档GT数），非论文数字来源，可忽略",
-    "论文数字真实来源": "multiseed.json"
+  "legacy_notes": {
+    "summary_final.txt": "An early record from the 640/1280 exploration phase (its small-lesion GT count of 762 corresponds to the small-stratum test GT count verified here). It is not the source of the values reported in the paper and can be ignored.",
+    "source_of_the_reported_values": "multiseed.json"
   }
 }
