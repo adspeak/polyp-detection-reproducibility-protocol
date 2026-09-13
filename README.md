@@ -1,263 +1,305 @@
-# A Multi-Seed, Clinically-Anchored Protocol for Reproducible Evaluation of Small Polyp Detection
+# Calibration Under Backbone Sharing in Multi-Task Polyp Detection
 
-This repository contains the code and per-seed results accompanying the paper
-*A Multi-Seed, Clinically-Anchored Protocol for Reproducible Evaluation of Small
-Polyp Detection*. It provides everything needed to reproduce the case study that
-instantiates the proposed evaluation protocol, using the addition of a
-high-resolution detection head (P2) to a YOLOv8s detector as a **representative
-case study** — not as a proposed detection method.
+Code accompanying *Calibration Under Backbone Sharing in Multi-Task Polyp
+Detection: Effects of Sharing Depth, Head Capacity, and Prediction-Set
+Composition*.
 
-The protocol itself is the contribution of the paper. The P2 modification is
-only a test case used to demonstrate that a single-seed evaluation can report a
-clinically framed "improvement" that the protocol shows to be an artefact of
-training variability.
+This repository reproduces every experiment and statistical analysis in the
+paper: training joint polyp-detection / gastrointestinal-classification models at
+four backbone-sharing depths, computing four calibration metrics on the resulting
+detectors, and running the statistical comparisons reported in the manuscript.
 
-> **Paper DOI:** _to be added upon acceptance._
+---
 
-## What this code reproduces
+## What is here
 
-| Paper item | Script |
-| --- | --- |
-| Video-level train/val/test split with leakage control (Sec. 4.2) | `data_preparation/prepare_dataset.py` |
-| Clinically anchored size thresholds, 1.87% / 6.31% (Sec. 4.3) | `data_preparation/compute_size_thresholds.py` |
-| Model configurations: baseline, +P2, control (Table 2) | `configs/` + `scripts/train.py` |
-| Per-seed and across-seed size-stratified recall (Tables 3, 4) | `evaluation/multiseed_eval.py` |
-| Operational assessment rule on the small stratum (Sec. 5.2) | `evaluation/multiseed_eval.py` |
-| Scale-response crossover and small-scale false positives (Sec. 5.2) | `evaluation/crossover_fp_analysis.py` |
-| Lesion-size distribution of the two datasets (Fig. 2) | `figures/make_fig2_dataset_distribution.py` |
-| Single-seed recall-vs-scale curve and crossover (Fig. 3) | `figures/make_fig3_singleseed_crossover.py` |
-| Protocol overview schematic (Fig. 1) | `figures/make_fig1_protocol_overview.py` |
-| Recall by lesion-size stratum across seeds (Fig. 4) | `figures/make_fig4_multiseed_stability.py` |
+The study asks what sharing a detection backbone with an auxiliary
+classification task does to the calibration of the detector's confidence scores,
+and how much of any degradation is attributable to competition between the tasks
+rather than to the capacity that sharing removes.
 
-Recorded per-seed outputs are in `results/` (see below), so the reported summary
-statistics can be recomputed without retraining.
+Seven configurations are trained, each across multiple random seeds:
 
-## Headline result
+| Configuration | Sharing depth `k` | Classification head | Seeds |
+|---|---|---|---|
+| `A_independent` | 0 (separate trunks) | LAG-LGFF | 42–49 |
+| `C_shallow` | 5 | LAG-LGFF | 42–47 |
+| `C_deep` | 9 | LAG-LGFF | 42–47 |
+| `B_shared` | 11 (fully shared) | LAG-LGFF | 42–49 |
+| `gapfc_A_independent` | 0 | GAP+FC | 42–49 |
+| `gapfc_B_shared` | 11 | GAP+FC | 42–49 |
+| `F_frozen` | 11, trunk frozen | LAG-LGFF | 42–47 |
 
-Under the eight-seed assessment, the candidate modification does **not** satisfy
-the operational assessment rule on the small-lesion stratum:
+Calibration is assessed with D-ECE (equal-width bins), Adaptive ECE (equal-mass
+bins), the Brier score and negative log-likelihood, on the detection validation
+set.
 
-| Quantity | Value |
-| --- | --- |
-| Mean difference, small stratum (Delta_small) | **+0.82 pp** |
-| Pooled seed-to-seed SD (SD_seed) | 3.33 pp |
-| Paired t-test across seeds | p = 0.41 |
-| Cohen's d (descriptive only) | 0.25 |
-| Scale-response crossover across seeds | 3.57% +/- 6.59% relative area |
-| Small-scale false-positive change | +16% +/- 67%, sign varies by seed |
+---
 
-By contrast, the single most favourable seed (42) alone shows a +5.6 pp gain in
-small-lesion recall and a crossover at 2.37% relative area — the single-seed
-picture the protocol is designed to test.
+## Setup
 
-## Datasets
-
-Both datasets are publicly available and are **not** redistributed here.
-
-- **LDPolypVideo** (primary dataset): Ma et al., *LDPolypVideo Benchmark: A
-  Large-Scale Colonoscopy Video Dataset of Diverse Polyps*, MICCAI 2021.
-  https://doi.org/10.1007/978-3-030-87240-3_37
-- **Kvasir-SEG** (contrasting dataset, dataset-scale dependency analysis):
-  Jha et al., *Kvasir-SEG: A Segmented Polyp Dataset*, MMM 2020.
-  https://doi.org/10.1007/978-3-030-37734-2_37
-
-Download them from their official sources and point the scripts at the local
-paths as shown below.
-
-## Reproducibility settings
-
-All stochastic elements are controlled by fixed seeds and settings so that a
-reported result can be closely replicated:
-
-- **Training seeds:** 42, 43, 44, 45, 46, 47, 48, 49 (the multi-seed assessment
-  uses all eight)
-- **Frame sampling stride:** 10 (one frame in every ten per video)
-- **Split:** video-level, 85:15 train/val on the development videos, with the 60
-  official test videos kept intact; seed 42 controls the train/val video split
-- **Training:** 100 epochs, image size 1280, batch 16, early-stopping patience
-  30, `deterministic=True`
-- **Size thresholds:** computed on the training set only, then frozen; stored as
-  decimal fractions (0.0187 / 0.0631), not percentages
-- **Evaluation:** fixed confidence threshold 0.25, IoU match 0.5, image size 1280
-
-## Installation
+### Environment
 
 ```bash
-git clone <this-repository-url>
-cd <this-repository>
 pip install -r requirements.txt
 ```
 
-The code was developed with Ultralytics YOLOv8 on Python 3.10+ (Google Colab,
-Tesla T4 GPU).
+The detection framework version is **pinned deliberately**. Mixing versions of
+`ultralytics` produced spurious differences in detection accuracy in earlier work
+from this line, so `requirements.txt` fixes `ultralytics==8.4.104`. Results are
+not guaranteed to reproduce under other versions.
 
-## Step-by-step reproduction
+### Workspace root
 
-Run all commands from the repository root.
-
-**1. Prepare the dataset** (video-level split, leakage control):
-
-```bash
-python data_preparation/prepare_dataset.py \
-    --ldpolyp-root /path/to/LDPolypVideo \
-    --out ./ldpolyp
-```
-
-This produces `./ldpolyp/` with `images/{train,val,test}`,
-`labels/{train,val,test}`, and `data.yaml`. On the paper's build this yields
-2,118 training, 402 validation, and 1,570 test images.
-
-**2. Compute the frozen size thresholds** (training set only):
+All paths derive from a single environment variable:
 
 ```bash
-python data_preparation/compute_size_thresholds.py \
-    --dataset ./ldpolyp \
-    --out size_thresholds.npy
+export BACKBONE_CALIB_ROOT=/path/to/your/workspace
 ```
 
-This reproduces the tercile boundaries 1.87% and 6.31% and the balanced strata
-of 626 / 611 / 640 lesions (small / medium / large), and reports the clinical
-anchoring check (the 5 mm boundary maps to ~2.04% relative area).
+If unset, the code falls back to `./workspace` inside the repository. The
+expected layout is:
 
-**3. Train the configurations under all eight seeds:**
+```
+$BACKBONE_CALIB_ROOT/
+    data/
+        kvasir_split/              classification data, one folder per class
+            train/ val/ test/
+        kvasir_seg_yolo/           detection data, YOLO format
+            images/train  images/val
+            labels/train  labels/val
+            dataset.yaml
+    runs/                          checkpoints          (created automatically)
+    results/                       training summaries   (created automatically)
+    calibration_results/           analysis outputs     (created automatically)
+    cache/                         GPU data cache       (created automatically)
+```
+
+### Data
+
+Both datasets are publicly available and must be downloaded separately:
+
+- **Kvasir v2** (8-class classification): Pogorelov et al., MMSys'17.
+  <https://datasets.simula.no/kvasir/>
+- **Kvasir-SEG** (polyp segmentation, converted to detection boxes):
+  Jha et al., MMM 2020. <https://datasets.simula.no/kvasir-seg/>
+
+Two further datasets are used for the additional-dataset evaluation:
+
+- **CVC-ClinicDB**: Bernal et al., Comput Med Imaging Graph 2015.
+- **ETIS-LaribPolypDB**: Silva et al., IJCARS 2014.
+
+`data/split_manifest.json` records the exact train/validation/test assignment
+used in the paper, generated once with seed 42. Detection boxes are the tightest
+axis-aligned box around each mask region at binarisation threshold 127.
+
+---
+
+## Reproducing the paper
+
+### 1. Training
 
 ```bash
-bash scripts/train_all_seeds.sh
+cd src
+python run_depth_sweep.py       # A, C-shallow, C-deep, B  (seeds 42-47)
+python run_head_ablation.py     # gapfc-A, gapfc-B         (seeds 42-47)
+python run_frozen_control.py    # F-frozen                 (seeds 42-47)
+python run_seed_extension.py    # seeds 48-49 for the four primary configs
 ```
 
-Or train a single configuration/seed directly, e.g.:
+Each run trains for 15,000 steps (1,875 optimiser updates at 8-step gradient
+accumulation) and takes roughly 45 minutes on an RTX 4090D. All four scripts skip
+configurations whose checkpoint already exists, so they are safe to re-run.
+
+### 2. Calibration records
 
 ```bash
-python scripts/train.py --config baseline --seed 42 --data ./ldpolyp/data.yaml
-python scripts/train.py --config p2       --seed 42 --data ./ldpolyp/data.yaml
+python compute_calibration.py --group exp1   # depth sweep
+python compute_calibration.py --group exp2   # head ablation
+python compute_calibration.py --group exp3   # frozen control
+
+python compute_brier_reliability.py --group exp1
+python compute_brier_reliability.py --group exp2
+python compute_brier_reliability.py --group exp3
 ```
 
-Best checkpoints are written to `runs/<config>_seed<seed>/weights/best.pt`.
-Training all eight seeds for both configurations produces 16 checkpoints.
+`compute_brier_reliability.py` caches the `(confidence, is_true_positive,
+image_index)` records for every model. **Once these exist, every remaining
+analysis runs without a GPU.**
 
-**4. Run the multi-seed, size-stratified evaluation:**
+Skip this step if you only want to reproduce the statistical analysis: the
+records are shipped with the repository (see below).
 
-Collect the sixteen checkpoints (baseline and +P2 for seeds 42-49) into a
-directory, then:
+### 3. Statistical analysis
 
 ```bash
-python evaluation/multiseed_eval.py \
-    --dataset ./ldpolyp \
-    --thresholds size_thresholds.npy \
-    --weights-dir ./weights \
-    --baseline  baseline_seed42.pt baseline_seed43.pt baseline_seed44.pt \
-                baseline_seed45.pt baseline_seed46.pt baseline_seed47.pt \
-                baseline_seed48.pt baseline_seed49.pt \
-    --candidate p2_seed42.pt p2_seed43.pt p2_seed44.pt p2_seed45.pt \
-                p2_seed46.pt p2_seed47.pt p2_seed48.pt p2_seed49.pt \
-    --seeds 42 43 44 45 46 47 48 49 \
-    --imgsz 1280 --conf 0.25 --iou-match 0.5 \
-    --out multiseed_results.json
+python stats_dece.py              # D-ECE: paired tests, TOST, interaction
+python stats_brier.py             # same tests on the Brier score
+python stats_nll_adaptive_ece.py  # NLL and Adaptive ECE
+python stats_trend.py             # linear trend across depths, unified 6-seed basis
+python stats_wilcoxon.py          # non-parametric sensitivity analysis
 ```
 
-This prints the per-seed small-lesion recall, the across-seed mean +/- SD for
-each stratum (Tables 3 and 4), and the operational assessment rule outcome for
-the small stratum. On the paper's checkpoints the small-stratum mean difference
-is +0.82 pp with a pooled seed-to-seed SD of 3.33 pp and a paired t-test
-p = 0.41, which does not satisfy the operational assessment rule.
-
-**5. Run the scale-response and false-positive stability analysis:**
+### 4. Post-hoc calibration and further analyses
 
 ```bash
-python evaluation/crossover_fp_analysis.py \
-    --dataset ./ldpolyp \
-    --thresholds size_thresholds.npy \
-    --weights-dir ./weights \
-    --baseline  baseline_seed42.pt ... baseline_seed49.pt \
-    --candidate p2_seed42.pt       ... p2_seed49.pt \
-    --seeds 42 43 44 45 46 47 48 49 \
-    --out crossover_fp_results.json
+python analyse_temperature_scaling.py   # 5-fold cross-fitted TS, folds over images
+python analyse_image_level.py           # image-level vs prediction-level bootstrap
+python analyse_by_lesion_size.py --dataset etis
 ```
 
-This reproduces the per-seed crossover locations and small-scale
-false-positive changes reported in Section 5.2.
-
-**6. Regenerate the figures:**
+### 5. Supplementary tables
 
 ```bash
-python figures/make_fig1_protocol_overview.py --outdir figures
-
-python figures/make_fig2_dataset_distribution.py \
-    --ldpolyp-labels ./ldpolyp/labels/train \
-    --kvasir-labels  ./kvasir/labels/train ./kvasir/labels/val \
-    --outdir figures
-
-python figures/make_fig3_singleseed_crossover.py \
-    --dataset ./ldpolyp \
-    --baseline  ./weights/baseline_seed42.pt \
-    --candidate ./weights/p2_seed42.pt \
-    --outdir figures
-
-python figures/make_fig4_multiseed_stability.py --outdir figures
+python make_supplementary_tables.py   # S1: per-seed estimates with intervals
+python make_test_inventory.py         # S2: inventory of all 42 tests
 ```
 
-Figure 1 is a schematic of the protocol and depends on no results file. Figure 2
-needs the Kvasir-SEG labels in YOLO format alongside the LDPolypVideo ones.
-Figure 3 needs the two seed-42 checkpoints and uses the same curve estimation
-and crossover location as `evaluation/crossover_fp_analysis.py`. Figure 4
-defaults to the across-seed statistics reported in the paper; pass
-`--results results/multiseed_8seeds.json` to plot it from the recorded per-seed
-values instead.
+Both write LaTeX fragments into `calibration_results/`, ready to be `\input` from
+the manuscript.
 
-## Recorded results
+---
 
-`results/` holds the per-seed outputs the paper reports, so the summary
-statistics can be checked without retraining:
+## Reproducing the analysis without a GPU
 
-- `multiseed_8seeds.json` — per-seed size-stratified recall for both
-  configurations across seeds 42-49 (underlies Tables 3 and 4)
-- `crossover_fp_8seeds.json` — per-seed scale-response crossover locations and
-  small-scale false-positive changes (underlies Section 5.2)
+The cached prediction records for all 50 trained models are committed under
+`data/raw_records/` (208 KB in total), and `src/paths.py` picks them up
+automatically. After cloning, every statistical script runs immediately, with no
+workspace, no datasets and no GPU:
 
-## Terminology (kept precise, as in the paper)
-
-- The across-seed difference `C_bar_k - B_bar_k` is the **mean difference**
-  (Delta_k), the primary quantity of interest.
-- **Cohen's d** (the standardized effect size) is reported only descriptively;
-  it is not the basis for the reliability decision.
-- `SD_seed` is the **pooled** seed-to-seed standard deviation of the baseline
-  and candidate values, `sqrt((SD_B^2 + SD_C^2) / 2)`.
-- The scale-response crossover is reported as an **empirical observation**, not
-  a theoretical threshold. The seed-45 value (19.78%) is an outlier and is
-  reported as measured, not removed.
-- P2 is a **case study / representative modification** throughout, never a
-  claimed contribution.
-
-## Repository layout
-
-```
-configs/
-    yolov8s-P2P3P4P5.yaml      # +P2 candidate modification
-    yolov8s-P2P3P4.yaml        # control (P5 detection head removed)
-data_preparation/
-    prepare_dataset.py         # video-level split + YOLO-format conversion
-    compute_size_thresholds.py # training-set tercile + clinical anchoring
-scripts/
-    train.py                   # train one config under one seed
-    train_all_seeds.sh         # train baseline + P2 across seeds 42-49
-evaluation/
-    multiseed_eval.py          # size-stratified recall + operational rule
-    crossover_fp_analysis.py   # scale-response crossover + false positives
-figures/
-    make_fig1_protocol_overview.py     # protocol schematic (Fig. 1)
-    make_fig2_dataset_distribution.py  # lesion-size distributions (Fig. 2)
-    make_fig3_singleseed_crossover.py  # single-seed crossover curve (Fig. 3)
-    make_fig4_multiseed_stability.py   # recall by stratum across seeds (Fig. 4)
-results/
-    multiseed_8seeds.json      # per-seed recall (Tables 3, 4)
-    crossover_fp_8seeds.json   # per-seed crossover and FP changes (Sec. 5.2)
-requirements.txt
-LICENSE
+```bash
+cd src
+python stats_dece.py
+python stats_brier.py
+python stats_nll_adaptive_ece.py
+python stats_trend.py
+python stats_wilcoxon.py
+python analyse_temperature_scaling.py
+python analyse_image_level.py
+python make_test_inventory.py
+python make_supplementary_tables.py   # after analyse_image_level.py has run once
 ```
 
-Note: the baseline uses the stock YOLOv8s architecture loaded directly from
-`yolov8s.pt`, so no `baseline.yaml` is needed.
+`stats_dece.py` computes D-ECE directly from the cached `(confidence,
+is_true_positive, image_index)` records (see `compute_dece()`), so E1-E3 need
+nothing beyond this repository. Its E5 comparison (CVC/ETIS) is the one
+exception: those two datasets were never cached as `.npz` records, so that part
+is skipped with an explanation rather than run, and does not affect E1-E3.
+
+`make_supplementary_tables.py` needs `image_level_bootstrap.json`, which
+`analyse_image_level.py` writes on its first run — run that one first.
+
+One script is genuinely not reproducible from this repository alone:
+`analyse_by_lesion_size.py` re-runs model inference on the training images to
+derive lesion-size tertiles, so it needs the actual datasets (and a GPU
+environment with `torch`/`ultralytics` installed) rather than just the cached
+records.
+
+Each `.npz` holds the `(confidence, is_true_positive, image_index)` triples for
+one trained model on the 198-image detection validation set. Every calibration
+number in the paper is computed from these.
+
+**What this does and does not reproduce.** It reproduces the analysis
+*conditional on these predictions*: the metrics, the paired tests, the
+interaction test, temperature scaling, and the bootstrap intervals. It does not
+reproduce the predictions themselves, which requires training the models from
+the datasets as described above. The two are separate claims, and only the first
+is verifiable from this repository alone.
+
+---
+
+## Which script produces which result
+
+| Manuscript element | Script |
+|---|---|
+| Table 1 (backbone modules) | structural description; see `model.py` |
+| Table 2 (configurations and parameter counts) | derived from checkpoints; see `model.py` |
+| Table 3 (image-level overlap audit) | see *Data overlap audit* below |
+| Table 4 (calibration by sharing depth) | `compute_calibration.py`, `compute_brier_reliability.py`, `stats_nll_adaptive_ece.py` |
+| Table 5 (interaction) | `stats_dece.py`, `stats_brier.py`, `stats_nll_adaptive_ece.py` |
+| Table 6 (temperature scaling) | `analyse_temperature_scaling.py` |
+| Table 7 (additional datasets) | `compute_calibration.py --group exp5` |
+| Table 8 (lesion size) | `analyse_by_lesion_size.py --dataset etis` |
+| Table 9 (confidence-threshold scan) | `verification/verify_numbers_v29.py` |
+| Linear trend tests | `stats_trend.py` |
+| Supplementary S1 | `make_supplementary_tables.py`, `analyse_image_level.py` |
+| Supplementary S2 | `make_test_inventory.py` |
+| Supplementary S4 | `stats_wilcoxon.py` |
+
+---
+
+## Data overlap audit
+
+Kvasir-SEG is derived from the polyp class of Kvasir v2, so the two tasks draw on
+overlapping source material. Because the two collections use different file
+naming conventions, filename comparison is uninformative; the audit compares
+image content using both MD5 and perceptual hashes:
+
+```python
+from PIL import Image
+import imagehash, glob, os
+
+def phash(p):
+    return str(imagehash.phash(Image.open(p).convert("RGB")))
+
+cls_train = {phash(f) for f in glob.glob(".../kvasir_split/train/polyps/*")}
+det_val   = {phash(f) for f in glob.glob(".../kvasir_seg_yolo/images/val/*")}
+print(len(cls_train & det_val))
+```
+
+Both hashing methods returned the same result: two images appear in both the
+classification training set and the detection validation set. These were excluded
+from all reported evaluations, reducing the detection validation set to 198
+images. Their identifiers are listed in
+`calibration_results/excluded_val_images.json` once the audit is run. The
+cached records shipped here already reflect that exclusion: each covers 198
+validation images.
+
+---
+
+## Notes on the code
+
+**Model loading.** The joint model cannot be loaded with `ultralytics.YOLO()`
+directly. `compute_calibration.py` rebuilds it via `load_joint_model()` and then
+transplants the detection pathway into a standard `DetectionModel` with
+`transplant_detector()`, a round-trip that was validated against the original
+evaluation code.
+
+**Seed counts differ by configuration.** The four configurations entering the
+primary analysis use eight seeds; the intermediate depths and the frozen control
+use six; the additional-dataset runs use three. Changing the seed count requires
+editing four places: `CONFIG_GROUPS` in `compute_calibration.py`; the `SEEDS`
+constant in `stats_brier.py` and `analyse_temperature_scaling.py`; and
+`CONFIG_SEEDS` in `stats_dece.py`.
+
+**Loss weighting.** The joint objective is
+`L = L_cls + lambda * L_det` with `lambda = 0.0304`, fixed in advance by matching
+the gradient norms the two loss terms contribute to the shared parameters, and
+held constant across all sharing depths. A depth-dependent weighting would
+confound the effect under study.
+
+---
 
 ## Citation
 
-_Citation details (BibTeX) will be added upon acceptance._
+```bibtex
+@article{chen2026calibration,
+  title   = {Calibration Under Backbone Sharing in Multi-Task Polyp Detection:
+             Effects of Sharing Depth, Head Capacity, and Prediction-Set
+             Composition},
+  author  = {Chen, Yude},
+  journal = {TBD},
+  year    = {2026}
+}
+```
+
+Code: https://github.com/adspeak/backbone-sharing-calibration
+
+---
+
+## License
+
+MIT. See `LICENSE`.
+
+The datasets used are distributed under their own terms; please consult the
+original sources.
