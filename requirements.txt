@@ -1,9 +1,19 @@
-# Core dependencies for reproducing the evaluation protocol case study.
-# Pin versions if you need exact reproduction; the ranges below reflect the
-# environment used in the paper (Google Colab, Tesla T4, Python 3.10+).
-ultralytics>=8.0.0
-numpy>=1.23
-scipy>=1.9
-Pillow>=9.0
-PyYAML>=6.0
-matplotlib>=3.6
+# Environment used for every model and analysis in the revised paper
+# (Python 3.8.10; RTX 4090 D; CUDA 11.8; cuDNN 8700).
+# The full package lists recorded on the training hosts are in revision/env/.
+#
+# PyTorch is installed from the CUDA 11.8 wheel index:
+#   pip install torch==2.0.0+cu118 torchvision==0.15.1+cu118 \
+#       --index-url https://download.pytorch.org/whl/cu118
+torch==2.0.0
+torchvision==0.15.1
+ultralytics==8.4.104
+numpy==1.24.2
+scipy==1.10.1
+pandas==2.0.3
+matplotlib==3.7.1
+Pillow==10.4.0
+PyYAML==6.0
+opencv-python==4.9.0.80
+# ensemble_boxes 1.0.9 is not installed: revision/analysis_ensemble_v2.py loads it
+# from the vendored copy in revision/vendor/ (MIT licence included there).

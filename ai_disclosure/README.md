@@ -1,7 +1,7 @@
 # AI Disclosure Materials
 
 This directory documents the use of AI-assisted tools in the development of
-code for this study, as described in Section 4.6 ("Use of AI-assisted
+code for this study, as described in Section 4.9 ("Use of AI-assisted
 tools") of the manuscript, for the following five scripts:
 
 ```
@@ -99,7 +99,7 @@ development; detailed records distinguishing the exact extent of AI
 involvement were not retained for every script, so these are not itemised
 individually here. This disclosure is limited to what the authors can
 specifically and accurately confirm, consistent with the transparency
-principle stated in Section 4.6 of the manuscript.
+principle stated in Section 4.9 of the manuscript.
 
 ## Verification and responsibility
 

@@ -1,305 +1,153 @@
-# Calibration Under Backbone Sharing in Multi-Task Polyp Detection
+# Assessing a Single-Run Gain in Polyp Detection at the Small-Lesion Scale: A Multi-Seed, Size-Stratified Replication Study
 
-Code accompanying *Calibration Under Backbone Sharing in Multi-Task Polyp
-Detection: Effects of Sharing Depth, Head Capacity, and Prediction-Set
-Composition*.
+Code accompanying the paper *Assessing a Single-Run Gain in Polyp Detection at
+the Small-Lesion Scale: A Multi-Seed, Size-Stratified Replication Study*
+(PeerJ Computer Science, under review; submission CS-2026:07:145772).
 
-This repository reproduces every experiment and statistical analysis in the
-paper: training joint polyp-detection / gastrointestinal-classification models at
-four backbone-sharing depths, computing four calibration metrics on the resulting
-detectors, and running the statistical comparisons reported in the manuscript.
+The study takes a single-run improvement in small-lesion recall, obtained by
+adding a high-resolution detection level (P2) to YOLOv8s, and reassesses it with
+multiple training seeds, size-stratified recall and a graded verdict on the 95%
+confidence interval of the mean difference. The P2 modification is the case
+under assessment, not a proposed detection method.
 
----
+> **Release for the revised manuscript: `v1.1.0`.** Releases `v1.0.0` and
+> `v1.0.1` correspond to the original submission and are kept unchanged.
 
-## What is here
+## Contents
 
-The study asks what sharing a detection backbone with an auxiliary
-classification task does to the calibration of the detector's confidence scores,
-and how much of any degradation is attributable to competition between the tasks
-rather than to the capacity that sharing removes.
+| Folder | Contents |
+| --- | --- |
+| `data_preparation/` | LDPolypVideo video-level split and size thresholds (original submission) |
+| `configs/` | +P2 and control (P2–P4) model definitions |
+| `scripts/` | Training scripts of the original submission |
+| `evaluation/` | Public evaluation scripts: size-stratified recall and scale-response crossover |
+| `figures/` | Figure scripts; `make_fig1_protocol_overview_rev2.py` produces Figure 1 of the revised paper |
+| `results/` | Recorded per-seed results of the original (historical) batch |
+| `revision/` | Training, caching and analysis scripts of the revision (see below) |
+| `ai_disclosure/` | Original code-assistance records (see "Use of AI-assisted tools") |
 
-Seven configurations are trained, each across multiple random seeds:
+## Large files: release assets of `v1.1.0`
 
-| Configuration | Sharing depth `k` | Classification head | Seeds |
-|---|---|---|---|
-| `A_independent` | 0 (separate trunks) | LAG-LGFF | 42–49 |
-| `C_shallow` | 5 | LAG-LGFF | 42–47 |
-| `C_deep` | 9 | LAG-LGFF | 42–47 |
-| `B_shared` | 11 (fully shared) | LAG-LGFF | 42–49 |
-| `gapfc_A_independent` | 0 | GAP+FC | 42–49 |
-| `gapfc_B_shared` | 11 | GAP+FC | 42–49 |
-| `F_frozen` | 11, trunk frozen | LAG-LGFF | 42–47 |
+GitHub stores only code. The model weights, the inference caches and the
+analysis outputs are attached to the
+[`v1.1.0` release](https://github.com/adspeak/polyp-detection-reproducibility-protocol/releases/tag/v1.1.0)
+as the following assets; `SHA256SUMS.txt` lists their checksums.
 
-Calibration is assessed with D-ECE (equal-width bins), Adaptive ECE (equal-mass
-bins), the Brier score and negative log-likelihood, on the detection validation
-set.
+| Asset | Contents |
+| --- | --- |
+| `weights_runs.tar` | Retrained batch on LDPolypVideo (input 1280): baseline, +P2 and control (P2–P4), seeds 42–49 (24 runs) |
+| `weights_runs_g2.tar` | Same-seed repeats: baseline and +P2, seeds 42–43 (4 runs) |
+| `weights_runs_g3.tar` | Positive control: baseline at input 640, seeds 42–49 (8 runs); the 1280 arm is the baseline in `weights_runs.tar` |
+| `weights_runs_g6.tar` | Kvasir-SEG group-based split (input 640): baseline and +P2, seeds 42–49 (16 runs) |
+| `weights_runs_g7.tar` | Positive-control extension (registration S1): baseline at inputs 640 and 1280, seeds 50–57 (16 runs) |
+| `cache_and_analysis.tar.gz` | One-time inference caches (LDPolypVideo; Kvasir-SEG), the outputs of every revision analysis, the exact-match check records of the public scripts, and the Kvasir-SEG split manifest (train/validation/test 700/150/150) |
 
----
+Each weights archive holds, per run, `weights/best.pt` together with the
+training arguments (`args.yaml`) and the per-epoch record (`results.csv`).
 
-## Setup
+The frozen revision analysis addendum (v1.0) is at
+https://doi.org/10.6084/m9.figshare.34919340, and the supplementary registration
+of the positive-control extension (registration S1, v1.0) at
+https://doi.org/10.6084/m9.figshare.34933821.
 
-### Environment
+## Datasets
+
+Both datasets are public and are not redistributed here.
+
+- **LDPolypVideo**: Ma et al., MICCAI 2021, https://doi.org/10.1007/978-3-030-87240-3_37;
+  data at https://github.com/dashishi/LDPolypVideo-Benchmark
+- **Kvasir-SEG**: Jha et al., MMM 2020, https://doi.org/10.1007/978-3-030-37734-2_37;
+  data at https://datasets.simula.no/kvasir-seg/
+
+## Environment
 
 ```bash
+pip install torch==2.0.0+cu118 torchvision==0.15.1+cu118 --index-url https://download.pytorch.org/whl/cu118
 pip install -r requirements.txt
 ```
 
-The detection framework version is **pinned deliberately**. Mixing versions of
-`ultralytics` produced spurious differences in detection accuracy in earlier work
-from this line, so `requirements.txt` fixes `ultralytics==8.4.104`. Results are
-not guaranteed to reproduce under other versions.
+All revision models and analyses were run with Python 3.8.10, PyTorch 2.0.0+cu118,
+Ultralytics 8.4.104 and cuDNN 8700 on RTX 4090 D GPUs. The package lists
+recorded on the hosts are in `revision/env/`. Results are not guaranteed to
+reproduce under other Ultralytics versions.
 
-### Workspace root
+## Revision analyses
 
-All paths derive from a single environment variable:
+Every revision analysis reads the one-time inference cache (confidence 0.001,
+NMS IoU 0.7, at most 300 predictions per image) instead of re-running the test
+set, and each script checks its inputs against an earlier record before
+writing results. Scripts locate their sibling scripts in `revision/` and take
+the workspace, dataset and cache locations as arguments (`--root`, `--repo`,
+`--cache`, ...); `python <script> --help` lists them. The defaults and the
+records in `revision/run_records/` use the paths of the server on which the
+study was run (`revision/env/env.sh`).
 
-```bash
-export BACKBONE_CALIB_ROOT=/path/to/your/workspace
-```
+| Paper item | Script |
+| --- | --- |
+| Training of all revision runs (Section 4.4) | `revision/train_paper3.py` |
+| One-time inference cache (Section 4.5) | `revision/cache_predictions.py` |
+| Exact-match check of the cache against the public scripts (Section 4.5; Table S1, no. 5) | `revision/check_public_vs_cache.py` |
+| Initialisation-pairing check for the positive control and its extension (Section 4.5) | `revision/check_init_g7.py` |
+| Kvasir-SEG group-based split (Section 4.7) | `revision/prepare_kvasir_seg.py`, `revision/prepare_kvasir_v3split.py` |
+| Replication of the primary comparison; batch difference D (Section 5.2, Tables 5–6) | `revision/analysis_replication.py` |
+| Normal quantile–quantile plots (Fig. S1) | `revision/analysis_qq_small_stratum.py` |
+| Average precision and model cost: parameters, GFLOPs, inference time (Sections 4.4 and 5.2) | `revision/analysis_ap_cost.py` |
+| Kvasir-SEG multi-seed comparison (Section 5.3) | `revision/analysis_kvasir.py` |
+| Positive control: input resolution (Section 5.4) | `revision/analysis_positive_control.py` |
+| Positive-control extension, registration S1 (Section 5.4) | `revision/analysis_g7_planning.py`, `revision/analysis_g7_extension.py` |
+| Control configuration (Section 5.5, Table 7) | `revision/analysis_control.py` |
+| Same-seed repeats (Section 5.6) | `revision/analysis_g2.py`, `revision/analysis_g2_predictions.py` |
+| Ensembles at a common operating point (Section 5.7) | `revision/analysis_ensemble_v2.py` |
+| Seed subsets (Section 5.8) | `revision/analysis_seed_subsets.py` |
+| Field-diameter sensitivity (Section 5.8, Table S2) | `revision/analysis_fov.py` |
+| Operating characteristics of the verdict rule (Sections 5.4 and 5.8) | `revision/analysis_oc_simulation.py` |
+| Crossover definitions and one-to-one matching (Sections 5.2 and 5.8) | `revision/analysis_a11_v2.py` |
+| Test-video cluster bootstrap (Section 5.8) | `revision/analysis_a10_video_bootstrap.py` |
+| Recomputation of the recorded historical statistics | `revision/verify_recorded_results.py` |
 
-If unset, the code falls back to `./workspace` inside the repository. The
-expected layout is:
+`revision/evaluate_kvasir.py`, `revision/evaluate_coco_ap.py` and
+`revision/ensemble_eval.py` are the evaluation helpers called by
+`revision/run_records/autodl_reproduce_v1.0.1.sh`, the end-to-end reproduction
+of release v1.0.1. The other files in `revision/run_records/` are the job queues
+used to train and cache the runs, kept as run records. The ensemble fusion
+(`weighted_boxes_fusion`, ensemble_boxes 1.0.9, MIT licence) is loaded from the
+vendored copy in `revision/vendor/`.
 
-```
-$BACKBONE_CALIB_ROOT/
-    data/
-        kvasir_split/              classification data, one folder per class
-            train/ val/ test/
-        kvasir_seg_yolo/           detection data, YOLO format
-            images/train  images/val
-            labels/train  labels/val
-            dataset.yaml
-    runs/                          checkpoints          (created automatically)
-    results/                       training summaries   (created automatically)
-    calibration_results/           analysis outputs     (created automatically)
-    cache/                         GPU data cache       (created automatically)
-```
+## Original submission: public scripts
 
-### Data
-
-Both datasets are publicly available and must be downloaded separately:
-
-- **Kvasir v2** (8-class classification): Pogorelov et al., MMSys'17.
-  <https://datasets.simula.no/kvasir/>
-- **Kvasir-SEG** (polyp segmentation, converted to detection boxes):
-  Jha et al., MMM 2020. <https://datasets.simula.no/kvasir-seg/>
-
-Two further datasets are used for the additional-dataset evaluation:
-
-- **CVC-ClinicDB**: Bernal et al., Comput Med Imaging Graph 2015.
-- **ETIS-LaribPolypDB**: Silva et al., IJCARS 2014.
-
-`data/split_manifest.json` records the exact train/validation/test assignment
-used in the paper, generated once with seed 42. Detection boxes are the tightest
-axis-aligned box around each mask region at binarisation threshold 127.
-
----
-
-## Reproducing the paper
-
-### 1. Training
+The scripts in `data_preparation/`, `scripts/`, `evaluation/` and `figures/`
+are those of the original submission. Their use is unchanged:
 
 ```bash
-cd src
-python run_depth_sweep.py       # A, C-shallow, C-deep, B  (seeds 42-47)
-python run_head_ablation.py     # gapfc-A, gapfc-B         (seeds 42-47)
-python run_frozen_control.py    # F-frozen                 (seeds 42-47)
-python run_seed_extension.py    # seeds 48-49 for the four primary configs
+python data_preparation/prepare_dataset.py --ldpolyp-root /path/to/LDPolypVideo --out ./ldpolyp
+python data_preparation/compute_size_thresholds.py --dataset ./ldpolyp --out size_thresholds.npy
+bash scripts/train_all_seeds.sh
+python evaluation/multiseed_eval.py --dataset ./ldpolyp --thresholds size_thresholds.npy \
+    --weights-dir ./weights --baseline baseline_seed42.pt ... --candidate p2_seed42.pt ... \
+    --seeds 42 43 44 45 46 47 48 49 --imgsz 1280 --conf 0.25 --iou-match 0.5
+python evaluation/crossover_fp_analysis.py --dataset ./ldpolyp --thresholds size_thresholds.npy \
+    --weights-dir ./weights --baseline ... --candidate ... --seeds 42 43 44 45 46 47 48 49
 ```
 
-Each run trains for 15,000 steps (1,875 optimiser updates at 8-step gradient
-accumulation) and takes roughly 45 minutes on an RTX 4090D. All four scripts skip
-configurations whose checkpoint already exists, so they are safe to re-run.
+The video-level split yields 2,118 training, 402 validation and 1,570 test
+frames; the training-set tercile thresholds are 1.87% and 6.31% relative box
+area. `evaluation/multiseed_eval.py` reports the three-condition rule of the
+original submission; the revised paper uses the graded verdict implemented in
+`revision/analysis_replication.py` and reports the earlier rule alongside
+(Table 7). The paper's crossover is the first crossing from candidate above
+to at or below baseline, as computed by `evaluation/crossover_fp_analysis.py`.
 
-### 2. Calibration records
+## Use of AI-assisted tools
 
-```bash
-python compute_calibration.py --group exp1   # depth sweep
-python compute_calibration.py --group exp2   # head ablation
-python compute_calibration.py --group exp3   # frozen control
-
-python compute_brier_reliability.py --group exp1
-python compute_brier_reliability.py --group exp2
-python compute_brier_reliability.py --group exp3
-```
-
-`compute_brier_reliability.py` caches the `(confidence, is_true_positive,
-image_index)` records for every model. **Once these exist, every remaining
-analysis runs without a GPU.**
-
-Skip this step if you only want to reproduce the statistical analysis: the
-records are shipped with the repository (see below).
-
-### 3. Statistical analysis
-
-```bash
-python stats_dece.py              # D-ECE: paired tests, TOST, interaction
-python stats_brier.py             # same tests on the Brier score
-python stats_nll_adaptive_ece.py  # NLL and Adaptive ECE
-python stats_trend.py             # linear trend across depths, unified 6-seed basis
-python stats_wilcoxon.py          # non-parametric sensitivity analysis
-```
-
-### 4. Post-hoc calibration and further analyses
-
-```bash
-python analyse_temperature_scaling.py   # 5-fold cross-fitted TS, folds over images
-python analyse_image_level.py           # image-level vs prediction-level bootstrap
-python analyse_by_lesion_size.py --dataset etis
-```
-
-### 5. Supplementary tables
-
-```bash
-python make_supplementary_tables.py   # S1: per-seed estimates with intervals
-python make_test_inventory.py         # S2: inventory of all 42 tests
-```
-
-Both write LaTeX fragments into `calibration_results/`, ready to be `\input` from
-the manuscript.
-
----
-
-## Reproducing the analysis without a GPU
-
-The cached prediction records for all 50 trained models are committed under
-`data/raw_records/` (208 KB in total), and `src/paths.py` picks them up
-automatically. After cloning, every statistical script runs immediately, with no
-workspace, no datasets and no GPU:
-
-```bash
-cd src
-python stats_dece.py
-python stats_brier.py
-python stats_nll_adaptive_ece.py
-python stats_trend.py
-python stats_wilcoxon.py
-python analyse_temperature_scaling.py
-python analyse_image_level.py
-python make_test_inventory.py
-python make_supplementary_tables.py   # after analyse_image_level.py has run once
-```
-
-`stats_dece.py` computes D-ECE directly from the cached `(confidence,
-is_true_positive, image_index)` records (see `compute_dece()`), so E1-E3 need
-nothing beyond this repository. Its E5 comparison (CVC/ETIS) is the one
-exception: those two datasets were never cached as `.npz` records, so that part
-is skipped with an explanation rather than run, and does not affect E1-E3.
-
-`make_supplementary_tables.py` needs `image_level_bootstrap.json`, which
-`analyse_image_level.py` writes on its first run — run that one first.
-
-One script is genuinely not reproducible from this repository alone:
-`analyse_by_lesion_size.py` re-runs model inference on the training images to
-derive lesion-size tertiles, so it needs the actual datasets (and a GPU
-environment with `torch`/`ultralytics` installed) rather than just the cached
-records.
-
-Each `.npz` holds the `(confidence, is_true_positive, image_index)` triples for
-one trained model on the 198-image detection validation set. Every calibration
-number in the paper is computed from these.
-
-**What this does and does not reproduce.** It reproduces the analysis
-*conditional on these predictions*: the metrics, the paired tests, the
-interaction test, temperature scaling, and the bootstrap intervals. It does not
-reproduce the predictions themselves, which requires training the models from
-the datasets as described above. The two are separate claims, and only the first
-is verifiable from this repository alone.
-
----
-
-## Which script produces which result
-
-| Manuscript element | Script |
-|---|---|
-| Table 1 (backbone modules) | structural description; see `model.py` |
-| Table 2 (configurations and parameter counts) | derived from checkpoints; see `model.py` |
-| Table 3 (image-level overlap audit) | see *Data overlap audit* below |
-| Table 4 (calibration by sharing depth) | `compute_calibration.py`, `compute_brier_reliability.py`, `stats_nll_adaptive_ece.py` |
-| Table 5 (interaction) | `stats_dece.py`, `stats_brier.py`, `stats_nll_adaptive_ece.py` |
-| Table 6 (temperature scaling) | `analyse_temperature_scaling.py` |
-| Table 7 (additional datasets) | `compute_calibration.py --group exp5` |
-| Table 8 (lesion size) | `analyse_by_lesion_size.py --dataset etis` |
-| Table 9 (confidence-threshold scan) | `verification/verify_numbers_v29.py` |
-| Linear trend tests | `stats_trend.py` |
-| Supplementary S1 | `make_supplementary_tables.py`, `analyse_image_level.py` |
-| Supplementary S2 | `make_test_inventory.py` |
-| Supplementary S4 | `stats_wilcoxon.py` |
-
----
-
-## Data overlap audit
-
-Kvasir-SEG is derived from the polyp class of Kvasir v2, so the two tasks draw on
-overlapping source material. Because the two collections use different file
-naming conventions, filename comparison is uninformative; the audit compares
-image content using both MD5 and perceptual hashes:
-
-```python
-from PIL import Image
-import imagehash, glob, os
-
-def phash(p):
-    return str(imagehash.phash(Image.open(p).convert("RGB")))
-
-cls_train = {phash(f) for f in glob.glob(".../kvasir_split/train/polyps/*")}
-det_val   = {phash(f) for f in glob.glob(".../kvasir_seg_yolo/images/val/*")}
-print(len(cls_train & det_val))
-```
-
-Both hashing methods returned the same result: two images appear in both the
-classification training set and the detection validation set. These were excluded
-from all reported evaluations, reducing the detection validation set to 198
-images. Their identifiers are listed in
-`calibration_results/excluded_val_images.json` once the audit is run. The
-cached records shipped here already reflect that exclusion: each covers 198
-validation images.
-
----
-
-## Notes on the code
-
-**Model loading.** The joint model cannot be loaded with `ultralytics.YOLO()`
-directly. `compute_calibration.py` rebuilds it via `load_joint_model()` and then
-transplants the detection pathway into a standard `DetectionModel` with
-`transplant_detector()`, a round-trip that was validated against the original
-evaluation code.
-
-**Seed counts differ by configuration.** The four configurations entering the
-primary analysis use eight seeds; the intermediate depths and the frozen control
-use six; the additional-dataset runs use three. Changing the seed count requires
-editing four places: `CONFIG_GROUPS` in `compute_calibration.py`; the `SEEDS`
-constant in `stats_brier.py` and `analyse_temperature_scaling.py`; and
-`CONFIG_SEEDS` in `stats_dece.py`.
-
-**Loss weighting.** The joint objective is
-`L = L_cls + lambda * L_det` with `lambda = 0.0304`, fixed in advance by matching
-the gradient norms the two loss terms contribute to the shared parameters, and
-held constant across all sharing depths. A depth-dependent weighting would
-confound the effect under study.
-
----
+ChatGPT (OpenAI) and Claude (Anthropic) assisted with translation, English
+editing, manuscript drafting and organisation, and code preparation and
+checking. Their code-related use included repackaging some of the authors'
+plotting and analysis scripts and correcting a pooled-standard-deviation
+calculation. The authors make the final decisions on the study design, analyses
+and interpretation, run the experiments themselves, review all assisted code and
+text, and take responsibility for the reported findings. The original
+code-assistance records are retained in `ai_disclosure/`.
 
 ## Citation
 
-```bibtex
-@article{chen2026calibration,
-  title   = {Calibration Under Backbone Sharing in Multi-Task Polyp Detection:
-             Effects of Sharing Depth, Head Capacity, and Prediction-Set
-             Composition},
-  author  = {Chen, Yude},
-  journal = {TBD},
-  year    = {2026}
-}
-```
-
-Code: https://github.com/adspeak/backbone-sharing-calibration
-
----
-
-## License
-
-MIT. See `LICENSE`.
-
-The datasets used are distributed under their own terms; please consult the
-original sources.
+Citation details will be added upon acceptance.

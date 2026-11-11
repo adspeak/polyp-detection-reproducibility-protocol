@@ -1,0 +1,8 @@
+host autodl-container-0ddb47b5b1-1dded6eb
+kernel 5.15.0-101-generic
+driver_gpu 580.105.08, NVIDIA GeForce RTX 4090 D
+software 3.8.10 2.0.0+cu118 8.4.104 8700
+commit 5cf520b02706c609538e871d263e1d93be3da69a tags v1.0.0 v1.0.1 
+train_paper3_sha256 acdd1a023ec4c4545b4ebe50b005c0e813135eaa1dc38df6316df07288f541db
+yolov8s_sha256 1f47a78bf100391c2a140b7ac73a1caae18c32779be7d310658112f7ac9aa78a
+s1_doi 10.6084/m9.figshare.34933821
